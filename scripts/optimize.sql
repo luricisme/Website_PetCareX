@@ -68,11 +68,11 @@ ON dbo.HoaDon (IdChiNhanh, NgayLap)
 INCLUDE (TienThanhToan, IdHoaDon, TrangThai);
 GO
 
-﻿-- Tạo composite non-clustered index
-CREATE NONCLUSTERED INDEX IX_LichSuTiem_MaThuCung_NgayTiem
+-- SỬA: Bỏ MaThuCung và MaVacXin vì không tồn tại trong bảng LichSuTiem
+CREATE NONCLUSTERED INDEX IX_LichSuTiem_ThuCung_NgayTiem
 ON LichSuTiem(IdThuCung, NgayTiem DESC)
-INCLUDE (MaLichSuTiem, MuiSo, LieuLuong, MaVacXin, MaNhanVien);
-
+INCLUDE (IdLichSuTiem, MuiSo, LieuLuong, IdVacXin, IdBacSi);
+GO
 
 CREATE NONCLUSTERED INDEX IDX_ThuCung_Id_Ten
 ON ThuCung (IdThuCung)
@@ -84,20 +84,10 @@ ON [dbo].[SanPham] ([LoaiSanPham])
 INCLUDE ([TenSanPham], [GiaBan]);
 GO
 
-CREATE NONCLUSTERED INDEX [IDX_TonKho_MaSanPham_GiaoDienBacSi]
-ON [dbo].[TonKho] ([MaSanPham])
+-- SỬA: Bỏ MaSanPham vì TonKho dùng IdSanPham
+CREATE NONCLUSTERED INDEX [IDX_TonKho_SanPham_GiaoDienBacSi]
+ON [dbo].[TonKho] ([IdSanPham])
 INCLUDE ([IdChiNhanh], [SoLuong]);
-GO
-
-CREATE NONCLUSTERED INDEX [IDX_TonKho_DoctorLookup]
-ON [dbo].[TonKho] ([IdChiNhanh], [LoaiSanPham], [TenSanPham])
-INCLUDE ([MaSanPham], [SoLuong]);
-GO
-
--- Indexing for getting appointments
-CREATE NONCLUSTERED INDEX IDX_ThuCung_Id_Ten
-ON ThuCung (IdThuCung)
-INCLUDE (Ten, Loai, Giong);
 GO
 
 
@@ -120,18 +110,36 @@ AS PARTITION [PF_HoSoKham_ByYear]
 ALL TO ([PRIMARY]);
 GO
 
--- 3. Xóa bảng cũ để tạo lại bảng có Partition
+-- 3. Xóa các bảng có FK references đến HoSoKhamBenh trước
+-- Drop Toa_SanPham trước (nó reference Toa)
+IF OBJECT_ID('dbo.Toa_SanPham', 'U') IS NOT NULL
+    DROP TABLE [dbo].[Toa_SanPham];
+GO
+
+-- Drop Toa (nó reference HoSoKhamBenh)
+IF OBJECT_ID('dbo.Toa', 'U') IS NOT NULL
+    DROP TABLE [dbo].[Toa];
+GO
+
+-- Drop HoaDon_Kham (nó reference HoSoKhamBenh)
+IF OBJECT_ID('dbo.HoaDon_Kham', 'U') IS NOT NULL
+    DROP TABLE [dbo].[HoaDon_Kham];
+GO
+
+-- Bây giờ mới drop HoSoKhamBenh
 IF OBJECT_ID('dbo.HoSoKhamBenh', 'U') IS NOT NULL
     DROP TABLE [dbo].[HoSoKhamBenh];
 GO
 
+-- SỬA: Thêm cột IdBacSi bị thiếu
 CREATE TABLE [dbo].[HoSoKhamBenh] (
     [IdHoSo] INT IDENTITY(1,1) NOT NULL,
     [IdThuCung] INT NOT NULL,
     [ThoiGianKham] DATETIME NOT NULL,
     [TrieuChung] NVARCHAR(MAX),
     [ChuanDoan] NVARCHAR(MAX),
-    [NgayTaiKham] DATETIME,
+    [NgayTaiKham] DATE,
+    [IdBacSi] INT,
 
     CONSTRAINT [PK_HoSoKhamBenh_Partition] PRIMARY KEY CLUSTERED ([IdHoSo], [ThoiGianKham])
 ) ON [PS_HoSoKham_ByYear]([ThoiGianKham]);
@@ -144,23 +152,22 @@ ALTER TABLE [HoSoKhamBenh] ADD FOREIGN KEY ([IdBacSi]) REFERENCES [NhanVien] ([I
 GO
 
 -- Optimize for getting product on storage
-CREATE NONCLUSTERED INDEX [IDX_SanPham_LoaiThuoc_Covering]
-ON [dbo].[SanPham] ([LoaiSanPham])
-INCLUDE ([TenSanPham], [GiaBan]);
-GO
-
 IF OBJECT_ID('dbo.TonKho', 'U') IS NOT NULL
     DROP TABLE [dbo].[TonKho];
 GO
 
+-- SỬA: Thêm IdSanPham để giữ FK với SanPham
 CREATE TABLE [TonKho] (
   [IdChiNhanh] INT,
+  [IdSanPham] INT,
   [MaSanPham] nvarchar(255),
   [SoLuong] int,
   [LoaiSanPham] nvarchar(255),
   [TenSanPham] nvarchar(255),
   [SoLuongDaBan] INT,
-  PRIMARY KEY ([IdChiNhanh], [MaSanPham])
+  PRIMARY KEY ([IdChiNhanh], [IdSanPham]),
+  FOREIGN KEY ([IdChiNhanh]) REFERENCES [ChiNhanh] ([IdChiNhanh]),
+  FOREIGN KEY ([IdSanPham]) REFERENCES [SanPham] ([IdSanPham])
 )
 GO
 
@@ -181,7 +188,7 @@ BEGIN
         SET tk.TenSanPham = i.TenSanPham,
             tk.LoaiSanPham = i.LoaiSanPham
         FROM [TonKho] tk
-        INNER JOIN inserted i ON tk.MaSanPham = i.MaSanPham;
+        INNER JOIN inserted i ON tk.IdSanPham = i.IdSanPham;
     END
 END;
 GO
@@ -197,20 +204,19 @@ AS PARTITION [PF_PetCare_ByYear]
 ALL TO ([PRIMARY]);
 GO
 
-DROP TABLE IF EXISTS Toa;
-GO
+-- SỬA: Đổi IdToa thành INT và thêm cột IdToa
 CREATE TABLE [dbo].[Toa] (
-[MaToa] NVARCHAR(255) NOT NULL,
-[IdHoSo] INT NOT NULL,
-[IdThuCung] INT NOT NULL,
-[ThoiGianKham] DATETIME NOT NULL,
-CONSTRAINT [PK_Toa] PRIMARY KEY CLUSTERED ([MaToa], [ThoiGianKham]),
-CONSTRAINT [FK_Toa_HoSo] FOREIGN KEY ([IdHoSo], [ThoiGianKham])
-REFERENCES [HoSoKhamBenh] ([IdHoSo], [ThoiGianKham])
+    [IdToa] INT IDENTITY(1,1),
+    [MaToa] NVARCHAR(255) NOT NULL,
+    [IdHoSo] INT NOT NULL,
+    [IdThuCung] INT NOT NULL,
+    [ThoiGianKham] DATETIME NOT NULL,
+    CONSTRAINT [PK_Toa] PRIMARY KEY CLUSTERED ([IdToa], [ThoiGianKham]),
+    CONSTRAINT [FK_Toa_HoSo] FOREIGN KEY ([IdHoSo], [ThoiGianKham])
+        REFERENCES [HoSoKhamBenh] ([IdHoSo], [ThoiGianKham])
 ) ON [PS_PetCare_ByYear]([ThoiGianKham]);
-
-DROP TABLE IF EXISTS Toa_SanPham;
 GO
+
 CREATE TABLE [Toa_SanPham] (
     [IdToa] INT NOT NULL,
     [IdSanPham] INT NOT NULL,
@@ -221,30 +227,92 @@ CREATE TABLE [Toa_SanPham] (
     [ThanhTien] AS (CAST(SoLuong * DonGia AS DECIMAL(18,2))) PERSISTED,
     CONSTRAINT [PK_Toa_SanPham] PRIMARY KEY CLUSTERED ([IdToa], [IdSanPham], [ThoiGianKham]),
     CONSTRAINT [FK_ToaSP_Toa] FOREIGN KEY ([IdToa], [ThoiGianKham])
-        REFERENCES [Toa] ([IdToa], [ThoiGianKham])
+        REFERENCES [Toa] ([IdToa], [ThoiGianKham]),
+    CONSTRAINT [FK_ToaSP_SanPham] FOREIGN KEY ([IdSanPham])
+        REFERENCES [SanPham] ([IdSanPham])
 ) ON [PS_PetCare_ByYear]([ThoiGianKham]);
 GO
 
+-- SỬA: Sửa trigger vì không có cột MaToa và MaSanPham trong Toa_SanPham
 CREATE OR ALTER TRIGGER [trg_ToaSanPham_AllInOne_Sync]
-  ON [Toa_SanPham]
-  AFTER INSERT
-  AS
-  BEGIN
-      SET NOCOUNT ON;
+ON [Toa_SanPham]
+AFTER INSERT
+AS
+BEGIN
+    SET NOCOUNT ON;
 
-      -- Cập nhật đồng thời: Thời gian khám (cho Partition), Tên và Giá
-      UPDATE ts
-      SET ts.ThoiGianKham = t.ThoiGianKham,
-          ts.TenSanPham = sp.TenSanPham,
-          ts.DonGia = sp.GiaBan
-      FROM Toa_SanPham ts
-      INNER JOIN inserted i ON ts.MaToa = i.MaToa AND ts.MaSanPham = i.MaSanPham
-      INNER JOIN Toa t ON i.MaToa = t.MaToa
-      INNER JOIN SanPham sp ON i.MaSanPham = sp.MaSanPham;
-  END;
-  GO
+    -- Cập nhật Tên và Giá từ SanPham
+    UPDATE ts
+    SET ts.TenSanPham = sp.TenSanPham,
+        ts.DonGia = sp.GiaBan
+    FROM Toa_SanPham ts
+    INNER JOIN inserted i ON ts.IdToa = i.IdToa AND ts.IdSanPham = i.IdSanPham
+    INNER JOIN SanPham sp ON i.IdSanPham = sp.IdSanPham;
+END;
+GO
 
+-- SỬA: Bỏ MaToa vì không tồn tại trong Toa_SanPham mới
 CREATE NONCLUSTERED INDEX [IDX_Toa_SanPham_Export]
-ON [dbo].[Toa_SanPham] ([MaToa])
+ON [dbo].[Toa_SanPham] ([IdToa])
 INCLUDE ([TenSanPham], [SoLuong], [DonGia], [ThanhTien]);
 GO
+
+-- Tạo lại bảng HoaDon_Kham
+CREATE TABLE [HoaDon_Kham] (
+  [MaHoaDonKham] VARCHAR(255) PRIMARY KEY,
+  [IdHoSo] INT,
+  [ThoiGianKham] DATETIME,
+  [ThanhTien] DECIMAL(15,2),
+  [IdHoaDon] INT,
+  [IdDichVu] INT,
+  FOREIGN KEY ([IdHoaDon]) REFERENCES [HoaDon] ([IdHoaDon]),
+  FOREIGN KEY ([IdDichVu]) REFERENCES [DichVu] ([IdDichVu]),
+  FOREIGN KEY ([IdHoSo], [ThoiGianKham]) REFERENCES [HoSoKhamBenh] ([IdHoSo], [ThoiGianKham])
+);
+GO
+
+-- Check kết quả optimize:
+-- =============================================
+-- 1. XEM TẤT CẢ CÁC INDEX TRONG DATABASE
+-- =============================================
+SELECT
+    OBJECT_NAME(i.object_id) AS TableName,
+    i.name AS IndexName,
+    i.type_desc AS IndexType,
+    STRING_AGG(c.name, ', ') WITHIN GROUP (ORDER BY ic.key_ordinal) AS IndexedColumns
+FROM sys.indexes i
+INNER JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+INNER JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+WHERE OBJECT_NAME(i.object_id) NOT LIKE 'sys%'
+    AND i.type_desc != 'HEAP'
+GROUP BY OBJECT_NAME(i.object_id), i.name, i.type_desc, i.index_id
+ORDER BY TableName, IndexName;
+GO
+
+-- =============================================
+-- 3. XEM TẤT CẢ CÁC PARTITION FUNCTION
+-- =============================================
+SELECT
+    pf.name AS PartitionFunctionName,
+    pf.type_desc AS PartitionType,
+    pf.fanout AS NumberOfPartitions,
+    prv.value AS BoundaryValue
+FROM sys.partition_functions pf
+LEFT JOIN sys.partition_range_values prv ON pf.function_id = prv.function_id
+ORDER BY pf.name, prv.boundary_id;
+GO
+
+-- =============================================
+-- 4. XEM TẤT CẢ CÁC PARTITION SCHEME
+-- =============================================
+SELECT
+    ps.name AS PartitionSchemeName,
+    pf.name AS PartitionFunctionName,
+    ds.name AS FileGroupName
+FROM sys.partition_schemes ps
+INNER JOIN sys.partition_functions pf ON ps.function_id = pf.function_id
+INNER JOIN sys.destination_data_spaces dds ON ps.data_space_id = dds.partition_scheme_id
+INNER JOIN sys.data_spaces ds ON dds.data_space_id = ds.data_space_id
+ORDER BY ps.name, dds.destination_id;
+GO
+
