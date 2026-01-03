@@ -19,6 +19,8 @@ spring:
 
 server:
   port: ${SERVER_PORT:9090}
+  servlet:
+    context-path: /api
 
 #logging:
 #  level:
