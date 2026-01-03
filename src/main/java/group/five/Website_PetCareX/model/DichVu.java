@@ -1,0 +1,18 @@
+package group.five.Website_PetCareX.model;
+
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+
+@Entity
+@Getter
+@Setter
+@Table(name = "[DichVu]", schema = "dbo")
+public class DichVu {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Integer idDichVu;
+
+    @Column(name = "TenDichVu")
+    private String tenDichVu;
+}
