@@ -11,7 +11,7 @@ import lombok.Setter;
 public class DichVu {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Integer idDichVu;
+    private Long idDichVu;
 
     @Column(name = "TenDichVu")
     private String tenDichVu;

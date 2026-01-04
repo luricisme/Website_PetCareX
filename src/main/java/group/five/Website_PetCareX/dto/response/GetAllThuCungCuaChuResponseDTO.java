@@ -7,7 +7,8 @@ import lombok.Setter;
 @Getter
 @Setter
 @AllArgsConstructor
-public class GetAllChiNhanhKhamBenhResponseDTO {
-    private Long idChiNhanh;
-    private String tenChiNhanh;
+public class GetAllThuCungCuaChuResponseDTO {
+    private Long idThuCung;
+    private String maThuCung;
+    private String ten;
 }
