@@ -9,10 +9,9 @@ import lombok.Setter;
 @Setter
 @Table(name = "[ChiNhanh]", schema = "dbo")
 public class ChiNhanh {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Integer idChiNhanh;
+    private Long idChiNhanh;
 
     @Column(name = "MaChiNhanh", nullable = false, unique = true)
     private String maChiNhanh;

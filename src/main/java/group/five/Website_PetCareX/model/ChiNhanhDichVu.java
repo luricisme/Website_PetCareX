@@ -11,8 +11,8 @@ import jakarta.persistence.Table;
 @IdClass(ChiNhanhDichVuId.class) // composite key
 public class ChiNhanhDichVu {
     @Id
-    private Integer idChiNhanh;
+    private Long idChiNhanh;
 
     @Id
-    private Integer idDichVu;
+    private Long idDichVu;
 }
