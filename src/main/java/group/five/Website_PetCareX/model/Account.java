@@ -18,8 +18,8 @@ public class Account {
     @Column(name = "IdAccount")
     private Long idAccount;
 
-    @Column(name = "Username", nullable = false, unique = true)
-    private String username;
+    @Column(name = "Email", nullable = false, unique = true)
+    private String email;
 
     @Column(name = "Password", nullable = false)
     private String password;
